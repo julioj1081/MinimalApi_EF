@@ -1,0 +1,171 @@
+Paso 1: 
+dotnet new webapi MiMinimalApi
+
+Paso 2: 
+Ingresar al program.cs y agregar las nuggets:
+//dotnet package add Microsoft.AspNetCore.OpenApi
+//dotnet package add Microsoft.EntityFrameworkCore
+//dotnet package add Microsoft.EntityFrameworkCore.SqlServer
+//dotnet package add Microsoft.EntityFrameworkCore.Tools
+//dotnet package add Swashbuckle.AspNetCore
+//dotnet package add Microsoft.EntityFrameworkCore.Design
+
+Paso 3:
+Agregar services, cors y conexion:
+builder.Services.AddOpenApi();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("*", policy => 
+    {
+        policy.AllowAnyHeader().AllowAnyMethod().AllowAnyOrigin();
+    });
+});
+
+Paso 4: 
+Despues de agregar la conexion.
+
+"ConnectionStrings": {
+  "DefaultConnection": "Server=ALBERTO;Database=FotosCrud;Trusted_Connection=True;TrustServerCertificate=True;"
+}
+
+Ejecutar el comando:
+PM> Scaffold-DbContext "Server=ALBERTO;Database=FotosCrud;Trusted_Connection=True;TrustServerCertificate=True;" Microsoft.EntityFrameworkCore.SqlServer -OutputDir Models
+
+o 
+
+ejecutar el comando: 
+PM> Scaffold-DbContext "Server=ALBERTO;Database=FotosCrud;User Id=TU_USUARIO;Password=TU_CONTRASEÑA;TrustServerCertificate=True;" Microsoft.EntityFrameworkCore.SqlServer -OutputDir Models
+
+
+Agregar la conexion en el program.cs
+var conntection = builder.Configuration.GetConnectionString("DefaultConnection");
+builder.Services.AddDbContext<FotosCrudContext>(options =>
+{
+    options.UseSqlServer(conntection);
+});
+
+Paso 5:
+Crear carpeta services y crear clase PhotoService
+
+builder.Services.AddScoped<PhotoService>();
+
+Paso 6: 
+Agregar métodos como inyección:
+app.MapOpenApi();
+app.UseSwagger();
+app.UseSwaggerUI();
+
+app.MapGet("/", () => Results.Redirect("/swagger"));
+
+
+Paso 7:
+Agregar CRUD en PhotoServices:
+ public class PhotoService
+ {
+     private readonly FotosCrudContext _context;
+     public PhotoService(FotosCrudContext context)
+     {
+         this._context = context;
+     }
+
+     public async Task<bool> InsertPhoto(Photo model)
+     {
+         var entity = new Photo()
+         {
+             IdPhoto = model.IdPhoto,
+             Nombre = model.Nombre,
+             Descripcion = model.Descripcion,
+             Url = model.Url
+         };
+         await _context.Photos.AddRangeAsync(entity);
+         var result = await _context.SaveChangesAsync();
+         return result > 0;
+     }
+
+     public async Task<List<Photo>> GetAllPhotos()
+     {
+         return await _context.Photos.AsNoTracking().ToListAsync();
+     }
+
+     public async Task<bool> Update(Photo model)
+     {
+         var photo = await _context.Photos.Where(x => x.IdPhoto == model.IdPhoto).FirstOrDefaultAsync();
+         if(photo != null)
+         {
+             photo.IdPhoto = model.IdPhoto;
+             photo.Nombre = model.Nombre;
+             photo.Descripcion = model.Descripcion;
+             photo.Url = model.Url;
+             _context.Photos.Update(photo);
+             var result = await _context.SaveChangesAsync();
+             return result > 0;
+         }
+         return false;
+     }
+
+     public async Task<bool> Delete(int IdPhoto)
+     {
+         var photo = await _context.Photos.Where(x => x.IdPhoto == IdPhoto).FirstOrDefaultAsync();
+         if(photo != null)
+         {
+             _context.Photos.Remove(photo);
+             var result = await _context.SaveChangesAsync();
+             return result > 0;
+         }
+         return false;
+     }
+ }
+
+
+Paso 8:
+Agregar funciones
+// 1. OBTENER
+app.MapGet("/api/photos", async (PhotoService photoService) =>
+{
+    var photos = await photoService.GetAllPhotos();
+    return Results.Ok(photos);
+});
+
+// 2. INSERTAR
+app.MapPost("/api/InsertPhoto", async (Photo model, PhotoService photoService) =>
+{
+    var insertado = await photoService.InsertPhoto(model);
+
+    if (!insertado)
+    {
+        return Results.NotFound(new { mensaje = "No se inserto" });
+    }
+    return Results.Ok(new {mensaje = "Imagen insertada"});
+});
+
+// 3. ACTUALIZAR
+app.MapPut("/api/photo", async (Photo model, PhotoService photoService) =>
+{
+    var actualizado = await photoService.Update(model);
+
+    if (!actualizado)
+    {
+        return Results.NotFound(new { mensaje = "No se encontró la foto para actualizar" });
+    }
+
+    return Results.Ok(new {mensaje = "Modifico la imagen"});
+});
+
+// 4. ELIMINAR UNA FOTO
+app.MapDelete("/api/photo/{id:int}", async (int id, PhotoService photoService) =>
+{
+    var eliminado = await photoService.Delete(id);
+
+    if (!eliminado)
+    {
+        return Results.NotFound(new { mensaje = $"No se encontró la foto con ID {id}" });
+    }
+
+    return Results.Ok(new { mensaje = "Foto eliminada correctamente" });
+});
+app.Run();
+
+
